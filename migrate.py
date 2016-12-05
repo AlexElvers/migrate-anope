@@ -9,6 +9,12 @@ import struct
 from pprint import pprint
 
 
+NS_VERBOTEN = 0x0002
+NS_TEMPORARY = 0xFF00
+
+NI_SERVICES_ROOT = 0x00008000
+
+
 FILE = "nick.db"
 
 
@@ -24,6 +30,8 @@ class Unpack:
 
     def unpack_string(self):
         size = self.unpack(">h")
+        if size == 0:
+            return None
         s = self.unpack("%ds" % size)[0][:-1]
         return s
 
@@ -34,7 +42,8 @@ with open(FILE, "rb") as f:
     (version,) = p.unpack(">i")
     print("Version:", version)
 
-    users = []
+    # read nick cores
+    nick_cores = {}
     for i in range(1024):
         if p.unpack("b")[0] == 1:
             nc = {}
@@ -46,10 +55,12 @@ with open(FILE, "rb") as f:
             nc["url"] = p.unpack_string()
             nc["flags"] = p.unpack(">i")[0]
             nc["language"] = p.unpack(">h")[0]
+
             nc["accesscount"] = p.unpack(">h")[0]
             nc["access"] = []
             for access in range(nc["accesscount"]):
                 nc["access"].append(p.unpack_string())
+
             nc["memos.memocount"] = p.unpack(">h")[0]
             nc["memos.memomax"] = p.unpack(">h")[0]
             nc["memos.memos"] = []
@@ -60,6 +71,7 @@ with open(FILE, "rb") as f:
                 memo["time"] = p.unpack(">i")[0]
                 memo["sender"] = p.unpack_string()
                 memo["text"] = p.unpack_string()
+
             nc["channelcount"] = p.unpack(">h")[0]
             p.unpack(">h")[0]
             if version < 13:
@@ -67,5 +79,39 @@ with open(FILE, "rb") as f:
                 p.unpack(">i")[0]
                 p.unpack(">h")[0]
                 p.unpack_string()
-            users.append(nc)
-    pprint(users)
+
+            nc["aliases"] = []
+
+            nick_cores[nc["display"]] = nc
+
+    # read nick cores
+    nick_aliases = {}
+    for i in range(1024):
+        if p.unpack("b")[0] == 1:
+            na = {}
+            na["nick"] = p.unpack_string()
+
+            na["last_usermask"] = p.unpack_string()
+            na["last_realname"] = p.unpack_string()
+            na["last_quit"] = p.unpack_string()
+
+            na["time_registered"] = p.unpack(">i")[0]
+            na["last_seen"] = p.unpack(">i")[0]
+            na["status"] = p.unpack(">h")[0] & ~NS_TEMPORARY
+
+            core_name = p.unpack_string()
+            na["nc"] = nick_cores[core_name]
+            nick_cores[core_name]["aliases"].append(na)
+
+            if not na["status"] & NS_VERBOTEN:
+                if not na["last_usermask"]:
+                    na["last_usermask"] = ""
+                if not na["last_realname"]:
+                    na["last_realname"] = ""
+
+            na["nc"]["flags"] &= ~NI_SERVICES_ROOT
+
+            nick_aliases[na["nick"]] = na
+
+    pprint(nick_cores)
+    # pprint(nick_aliases)
