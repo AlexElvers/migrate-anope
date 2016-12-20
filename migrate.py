@@ -32,10 +32,13 @@ class Unpack:
         self.offset += struct.calcsize(format)
         return res
 
-    def unpack_string(self):
-        size = self.unpack(">h")
-        if size == 0:
-            return None
+    def unpack_string(self, size=None):
+        if size is None:
+            size = self.unpack(">h")
+            if size == 0:
+                return None
+        else:
+            size = 32
         s = self.unpack("%ds" % size)[0][:-1]
         return s
 
@@ -52,7 +55,10 @@ with open(FILE, "rb") as f:
         if p.unpack("b")[0] == 1:
             nc = {}
             nc["display"] = p.unpack_string()
-            nc["pass"] = p.unpack_string()
+            if version < 14:
+                nc["pass"] = p.unpack_string()
+            else:
+                nc["pass"] = p.unpack_string(32)
             nc["email"] = p.unpack_string()
             nc["greet"] = p.unpack_string()
             nc["icq"] = p.unpack(">i")[0]
