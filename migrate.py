@@ -5,6 +5,8 @@ Migrate users from Anope 1.6 to Anope 2.0 (SQLite).
 Author: Alexander Elvers
 """
 
+import hashlib
+import sqlite3
 import struct
 from pprint import pprint
 
@@ -16,6 +18,8 @@ NI_SERVICES_ROOT = 0x00008000
 
 
 FILE = "nick.db"
+NEW_FILE = "anope.db"
+PREFIX = "anope_db_"
 
 
 class Unpack:
@@ -113,5 +117,32 @@ with open(FILE, "rb") as f:
 
             nick_aliases[na["nick"]] = na
 
-    pprint(nick_cores)
+    # pprint(nick_cores)
     # pprint(nick_aliases)
+
+
+# write passwords md5-encoded to SQLite database
+conn = sqlite3.connect(NEW_FILE)
+c = conn.cursor()
+
+c.execute("SELECT name, sql FROM `sqlite_master` WHERE `type`='trigger' AND `tbl_name`='{prefix}NickCore'".format(prefix=PREFIX))
+trigger = c.fetchone()
+c.execute("DROP TRIGGER {trigger[0]}".format(trigger=trigger))
+
+try:
+    for nc in nick_cores.values():
+        display = nc["display"].decode()
+        password = nc["pass"]
+        new_password = "md5:" + hashlib.md5(password).hexdigest()
+        print("Handling nick core", display)
+        c.execute("SELECT `display`, `email` FROM {prefix}NickCore WHERE `display`=?".format(prefix=PREFIX), (display,))
+        result = c.fetchone()
+        if result is None:
+            print("  NOT FOUND")
+        else:
+            print("  found: display=%s, mail=%s" % result)
+            print("  encrypted password:", new_password)
+            c.execute("UPDATE anope_db_NickCore SET `pass`=? WHERE `display`=?", (new_password, display))
+
+finally:
+    c.execute(trigger[1])
